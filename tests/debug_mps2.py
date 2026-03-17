@@ -1,4 +1,5 @@
 """Debug MPS pipeline step by step."""
+
 import torch
 from espirit.espirit import (
     _extract_calibration_region,
@@ -7,7 +8,6 @@ from espirit.espirit import (
     _transform_kernels_to_image_domain,
     _compute_image_domain_covariance,
     _compute_eigenmaps_batched,
-    _interpolate_covariance_and_extract_csm,
 )
 from conftest import make_synthetic_kspace_2d
 
@@ -41,9 +41,13 @@ for dev_name in ["cpu", "mps"]:
 
     # Check if cov looks reasonable
     cov_diag = torch.diagonal(cov, dim1=-2, dim2=-1)
-    print(f"cov diagonal max: {cov_diag.abs().max():.4f}, mean: {cov_diag.abs().mean():.4f}")
+    print(
+        f"cov diagonal max: {cov_diag.abs().max():.4f}, mean: {cov_diag.abs().mean():.4f}"
+    )
 
     csm, eigenvalues = _compute_eigenmaps_batched(cov, orthiter=False, num_orthiter=30)
     print(f"csm shape: {csm.shape}, max abs: {csm.abs().max():.4f}")
-    print(f"eigenvalues shape: {eigenvalues.shape}, max: {eigenvalues.max():.4f}, mean: {eigenvalues.mean():.4f}")
+    print(
+        f"eigenvalues shape: {eigenvalues.shape}, max: {eigenvalues.max():.4f}, mean: {eigenvalues.mean():.4f}"
+    )
     print(f"eigenvalues > 0.95: {(eigenvalues > 0.95).sum()}/{eigenvalues.numel()}")

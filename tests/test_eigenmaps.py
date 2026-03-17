@@ -1,7 +1,6 @@
 """Unit tests for eigenmap extraction (step 6) and power iteration."""
 
 import torch
-import pytest
 
 from espirit.espirit import (
     _run_power_iteration,
@@ -18,7 +17,7 @@ class TestPowerIteration:
         nc = 4
         # Build on CPU and move to device (for MPS complex randn compat)
         v_true = torch.randn(nc, dtype=torch.complex64)
-        v_true = v_true / torch.sqrt(torch.sum(torch.abs(v_true)**2))
+        v_true = v_true / torch.sqrt(torch.sum(torch.abs(v_true) ** 2))
         # Matrix with dominant eigenvalue 5, rest 1
         cov = torch.eye(nc, dtype=torch.complex64) + 4.0 * torch.outer(
             v_true, v_true.conj()
@@ -38,7 +37,12 @@ class TestPowerIteration:
     def test_batch(self, device):
         """Should handle multiple matrices in parallel."""
         B, nc = 16, 4
-        cov = (torch.eye(nc, dtype=torch.complex64) * 2).expand(B, -1, -1).contiguous().to(device)
+        cov = (
+            (torch.eye(nc, dtype=torch.complex64) * 2)
+            .expand(B, -1, -1)
+            .contiguous()
+            .to(device)
+        )
         vecs, vals = _run_power_iteration(cov, num_iter=30)
         assert vecs.shape == (B, nc)
         assert vals.shape == (B,)
@@ -50,8 +54,15 @@ class TestComputeEigenmapsBatched:
     def test_shape_2d(self, device):
         nc = 4
         # Fake covariance: (ny, nx, nc, nc)
-        cov = torch.eye(nc, dtype=torch.complex64).expand(8, 8, -1, -1).contiguous().to(device)
-        csm, eigenvalues = _compute_eigenmaps_batched(cov, orthiter=True, num_orthiter=30)
+        cov = (
+            torch.eye(nc, dtype=torch.complex64)
+            .expand(8, 8, -1, -1)
+            .contiguous()
+            .to(device)
+        )
+        csm, eigenvalues = _compute_eigenmaps_batched(
+            cov, orthiter=True, num_orthiter=30
+        )
         assert csm.shape == (1, nc, 8, 8)
         assert eigenvalues.shape == (1, 8, 8)
 
@@ -63,7 +74,9 @@ class TestComputeEigenmapsBatched:
         cov = torch.matmul(H.conj().transpose(-2, -1), H) / 6
         cov = cov.to(device)
 
-        csm_orth, evals_orth = _compute_eigenmaps_batched(cov, orthiter=True, num_orthiter=50)
+        csm_orth, evals_orth = _compute_eigenmaps_batched(
+            cov, orthiter=True, num_orthiter=50
+        )
         csm_eigh, evals_eigh = _compute_eigenmaps_batched(cov, orthiter=False)
 
         # Eigenvalues should be similar
@@ -77,7 +90,9 @@ class TestComputeEigenmapsBatched:
 class TestSincInterpolation:
     def test_identity_when_same_size(self, device):
         M = _build_sinc_interpolation_matrix(8, 8, device, torch.complex64)
-        assert torch.allclose(M, torch.eye(8, dtype=torch.complex64, device=device), atol=1e-5)
+        assert torch.allclose(
+            M, torch.eye(8, dtype=torch.complex64, device=device), atol=1e-5
+        )
 
     def test_upsample_preserves_dc(self, device):
         """A constant signal should stay constant after sinc interpolation."""

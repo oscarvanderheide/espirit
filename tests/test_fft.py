@@ -1,7 +1,6 @@
 """Unit tests for centered FFT helpers."""
 
 import torch
-import pytest
 
 from espirit.fft import fft2c, ifft2c, fft3c, ifft3c
 

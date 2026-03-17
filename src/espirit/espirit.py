@@ -123,9 +123,7 @@ def espirit(
     kernels, _ = _compute_kernel_subspace(cal_matrix, threshold=threshold)
 
     # Step 4
-    img_kernels = _transform_kernels_to_image_domain(
-        kernels, kernel_size, n_coils
-    )
+    img_kernels = _transform_kernels_to_image_domain(kernels, kernel_size, n_coils)
 
     # Step 5
     img_cov = _compute_image_domain_covariance(img_kernels, kernel_size)
@@ -173,7 +171,9 @@ def _to_size_tuple(value, n_dims, default):
 # =============================================================================
 
 
-def _extract_calibration_region(kspace: torch.Tensor, calib_size: tuple) -> torch.Tensor:
+def _extract_calibration_region(
+    kspace: torch.Tensor, calib_size: tuple
+) -> torch.Tensor:
     """Extract the central calibration region from k-space."""
     spatial_dims = kspace.shape[1:]
     slices = [slice(None)]  # coil dimension
@@ -203,9 +203,7 @@ def _build_calibration_matrix(
         patches = patches.unfold(dim_idx + 1, kernel_size[dim_idx], 1)
 
     # patches shape: (n_coils, *n_patches_per_dim, *kernel_size)
-    n_patches_per_dim = [
-        spatial_shape[i] - kernel_size[i] + 1 for i in range(n_dims)
-    ]
+    n_patches_per_dim = [spatial_shape[i] - kernel_size[i] + 1 for i in range(n_dims)]
     n_patches = 1
     for n in n_patches_per_dim:
         n_patches *= n
@@ -244,7 +242,7 @@ def _compute_kernel_subspace(
     svals = torch.sqrt(torch.abs(eigenvalues))
     max_sval = svals[0]
     if max_sval > 1e-12:
-        sqrt_thresh = threshold ** 0.5
+        sqrt_thresh = threshold**0.5
         n_keep = int((svals / max_sval > sqrt_thresh).sum().item())
     else:
         n_keep = 1
@@ -272,19 +270,21 @@ def _transform_kernels_to_image_domain(
 
     if n_dims == 2:
         img_kernels[
-            :, :,
-            starts[0]: starts[0] + kernel_size[0],
-            starts[1]: starts[1] + kernel_size[1],
+            :,
+            :,
+            starts[0] : starts[0] + kernel_size[0],
+            starts[1] : starts[1] + kernel_size[1],
         ] = kernels_spatial
         for k in range(n_kernels):
             for c in range(n_coils):
                 img_kernels[k, c] = ifft2c(img_kernels[k, c])
     elif n_dims == 3:
         img_kernels[
-            :, :,
-            starts[0]: starts[0] + kernel_size[0],
-            starts[1]: starts[1] + kernel_size[1],
-            starts[2]: starts[2] + kernel_size[2],
+            :,
+            :,
+            starts[0] : starts[0] + kernel_size[0],
+            starts[1] : starts[1] + kernel_size[1],
+            starts[2] : starts[2] + kernel_size[2],
         ] = kernels_spatial
         for k in range(n_kernels):
             for c in range(n_coils):
@@ -342,19 +342,17 @@ def _build_sinc_interpolation_matrix(
         new_shape = torch.zeros(n_out, dtype=dtype, device=device)
         if n_out > n_in:
             start = (n_out - n_in) // 2
-            new_shape[start: start + n_in] = tmp
+            new_shape[start : start + n_in] = tmp
         else:
             start = (n_in - n_out) // 2
-            new_shape = tmp[start: start + n_out].clone()
+            new_shape = tmp[start : start + n_out].clone()
         result = torch.fft.fftshift(torch.fft.ifft(torch.fft.ifftshift(new_shape)))
         result = result * (n_out / n_in)
         M[:, j] = result
     return M
 
 
-def _sinc_interp_axis(
-    data: torch.Tensor, target_size: int, axis: int
-) -> torch.Tensor:
+def _sinc_interp_axis(data: torch.Tensor, target_size: int, axis: int) -> torch.Tensor:
     """Sinc-interpolate data along one axis via FFT zero-padding."""
     source_size = data.shape[axis]
     if source_size == target_size:
@@ -476,9 +474,7 @@ def _interpolate_covariance_and_extract_csm(
 
         # Pack upper triangle to halve memory
         cosize = nc * (nc + 1) // 2
-        cov_packed = torch.zeros(
-            (nz_s, ny_s, nx_s, cosize), dtype=dtype, device=device
-        )
+        cov_packed = torch.zeros((nz_s, ny_s, nx_s, cosize), dtype=dtype, device=device)
         tri_i = torch.zeros(cosize, dtype=torch.long, device=device)
         tri_j = torch.zeros(cosize, dtype=torch.long, device=device)
         idx = 0

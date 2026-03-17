@@ -1,7 +1,6 @@
 """Unit tests for post-processing steps 7-9."""
 
 import torch
-import pytest
 
 from espirit.espirit import (
     _mask_sensitivity_maps,
@@ -30,7 +29,9 @@ class TestMaskSensitivityMaps:
         nc = 4
         csm = torch.ones(1, nc, 8, 8, dtype=torch.complex64, device=device)
         eigenvalues = torch.rand(1, 8, 8, device=device)
-        masked = _mask_sensitivity_maps(csm, eigenvalues, mask_threshold=0.5, soft_threshold=True)
+        masked = _mask_sensitivity_maps(
+            csm, eigenvalues, mask_threshold=0.5, soft_threshold=True
+        )
         assert masked.shape == csm.shape
 
 

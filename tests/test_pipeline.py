@@ -43,7 +43,9 @@ class TestFullPipeline2D:
         # In the support region (where eigenvalue mask passes), RSS should be ~1
         supported = rss > 0.5
         if supported.any():
-            assert torch.allclose(rss[supported], torch.ones_like(rss[supported]), atol=0.05)
+            assert torch.allclose(
+                rss[supported], torch.ones_like(rss[supported]), atol=0.05
+            )
 
 
 class TestFullPipeline3D:
@@ -60,7 +62,9 @@ class TestFullPipeline3D:
 
     def test_numpy_roundtrip(self):
         n_coils, nz, ny, nx = 4, 16, 32, 32
-        kspace_np = make_synthetic_kspace_3d(n_coils=n_coils, nz=nz, ny=ny, nx=nx).numpy()
+        kspace_np = make_synthetic_kspace_3d(
+            n_coils=n_coils, nz=nz, ny=ny, nx=nx
+        ).numpy()
         csm = espirit(kspace_np, calib_size=8, kernel_size=4, device="cpu")
         assert isinstance(csm, np.ndarray)
         assert csm.shape == (n_coils, nz, ny, nx)
@@ -75,7 +79,10 @@ class TestCrossDeviceConsistency:
         torch.manual_seed(42)
         kspace = make_synthetic_kspace_2d(n_coils=4, ny=64, nx=64)
         return espirit(
-            kspace, calib_size=12, kernel_size=6, device="cpu",
+            kspace,
+            calib_size=12,
+            kernel_size=6,
+            device="cpu",
             orthiter=False,  # Use eigh for deterministic results
         )
 
@@ -85,7 +92,10 @@ class TestCrossDeviceConsistency:
         torch.manual_seed(42)
         kspace = make_synthetic_kspace_3d(n_coils=4, nz=16, ny=32, nx=32)
         return espirit(
-            kspace, calib_size=8, kernel_size=4, device="cpu",
+            kspace,
+            calib_size=8,
+            kernel_size=4,
+            device="cpu",
             orthiter=False,
         )
 
@@ -99,7 +109,10 @@ class TestCrossDeviceConsistency:
             # Generate on CPU (for reproducibility) then move
             kspace = make_synthetic_kspace_2d(n_coils=4, ny=64, nx=64).to(dev)
             csm = espirit(
-                kspace, calib_size=12, kernel_size=6, device=dev,
+                kspace,
+                calib_size=12,
+                kernel_size=6,
+                device=dev,
                 orthiter=False,
             ).cpu()
             # Compare magnitudes (phase is arbitrary)
@@ -116,7 +129,10 @@ class TestCrossDeviceConsistency:
             torch.manual_seed(42)
             kspace = make_synthetic_kspace_3d(n_coils=4, nz=16, ny=32, nx=32).to(dev)
             csm = espirit(
-                kspace, calib_size=8, kernel_size=4, device=dev,
+                kspace,
+                calib_size=8,
+                kernel_size=4,
+                device=dev,
                 orthiter=False,
             ).cpu()
             assert torch.allclose(csm.abs(), ref.abs(), atol=0.1), (
@@ -133,8 +149,13 @@ class TestOptions:
     def test_option_combos_2d(self, device, orthiter, normalize, rotphase):
         kspace = make_synthetic_kspace_2d(n_coils=4, ny=32, nx=32, device=device)
         csm = espirit(
-            kspace, calib_size=12, kernel_size=6, device=device,
-            orthiter=orthiter, normalize=normalize, rotphase=rotphase,
+            kspace,
+            calib_size=12,
+            kernel_size=6,
+            device=device,
+            orthiter=orthiter,
+            normalize=normalize,
+            rotphase=rotphase,
         )
         assert csm.shape == (4, 32, 32)
         assert not torch.any(torch.isnan(csm))

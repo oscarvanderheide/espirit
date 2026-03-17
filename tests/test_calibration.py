@@ -1,7 +1,6 @@
 """Unit tests for ESPIRiT calibration steps 1-5."""
 
 import torch
-import pytest
 
 from espirit.espirit import (
     _extract_calibration_region,
@@ -44,7 +43,7 @@ class TestBuildCalibrationMatrix:
         calib = _extract_calibration_region(kspace, (12, 12))
         cal_matrix = _build_calibration_matrix(calib, (6, 6))
         n_patches = (12 - 6 + 1) ** 2  # 7 * 7 = 49
-        kernel_elements = 4 * 6 * 6     # n_coils * kx * ky = 144
+        kernel_elements = 4 * 6 * 6  # n_coils * kx * ky = 144
         assert cal_matrix.shape == (n_patches, kernel_elements)
 
     def test_shape_3d(self, device):

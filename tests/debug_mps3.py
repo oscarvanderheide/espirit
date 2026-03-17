@@ -1,4 +1,5 @@
 """Debug: compare image kernels and covariance on CPU vs MPS."""
+
 import torch
 from espirit.espirit import (
     _extract_calibration_region,
@@ -35,13 +36,13 @@ cov_mps = _compute_image_domain_covariance(img_kern_mps, kernel_size)
 diff_kern = (img_kern_cpu - img_kern_mps.cpu()).abs()
 print(f"img_kernels diff: max={diff_kern.max():.6e}, mean={diff_kern.mean():.6e}")
 
-# Compare covariance 
+# Compare covariance
 diff_cov = (cov_cpu - cov_mps.cpu()).abs()
 print(f"covariance diff: max={diff_cov.max():.6e}, mean={diff_cov.mean():.6e}")
 
 # Check normalization factor
-print(f"\nkernel_elements: {6*6} = 36")
-print(f"img_elements: {12*12} = 144")
+print(f"\nkernel_elements: {6 * 6} = 36")
+print(f"img_elements: {12 * 12} = 144")
 print(f"normalization: {36 / 144**2}")
 
 # Manually compute covariance at position (6,6) and compare
