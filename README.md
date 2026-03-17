@@ -11,19 +11,44 @@ This package contains a PyTorch translation of the ESPIRiT implementation from t
 ## Installation
 
 ```bash
-pip install -e .
+uv add espirit
 ```
 
 ## Usage
 
-```python
-import torch
-from espirit import espirit, select_device
+### Command Line
+```bash
+uvx espirit kspace.npy
+```
 
-# kspace: (n_coils, nz, ny, nx) complex tensor or NumPy array
-device = select_device()  # auto-detects best available: cuda > mps > cpu
-csm = espirit(kspace, device=device)
-# csm shape: (n_coils, nz, ny, nx), complex64
+### Python API
+```python
+import numpy as np
+import torch
+from espirit import espirit
+
+# NumPy
+kspace_np = np.load("kspace.npy")
+csm_np = espirit(kspace_np)
+
+# PyTorch 
+kspace_torch = torch.randn(8, 24, 24, 24, dtype=torch.complex64)
+csm_torch = espirit(kspace_torch)
+```
+
+### Advanced
+All arguments for the `espirit()` function:
+```python
+csm = espirit(
+    kspace,             # (n_coils, *spatial_dims)
+    calib_size=24,      # size of calibration region
+    kernel_size=6,      # sliding-window kernel size
+    threshold=0.01,     # relative singular-value threshold
+    mask_threshold=0.8, # eigenvalue mask threshold
+    normalize=True,     # RSS=1 normalization
+    rotphase=True,      # remove global phase ambiguity
+    device=None         # auto-detect (cuda, mps, cpu)
+)
 ```
 
 ## Device support
