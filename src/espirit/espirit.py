@@ -579,3 +579,60 @@ def _normalize_sensitivity_maps(csm: torch.Tensor) -> torch.Tensor:
     norm = torch.sqrt(torch.sum(torch.abs(csm) ** 2, dim=1, keepdim=True))
     norm = torch.where(norm > 1e-10, norm, torch.ones_like(norm))
     return csm / norm
+
+
+def main():
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="ESPIRiT coil sensitivity calibration")
+    parser.add_argument("input", help="Input k-space data (.npy)")
+    parser.add_argument(
+        "output", nargs="?", help="Output file path (.npy). Default: <input>_csm.npy"
+    )
+    parser.add_argument(
+        "--calib-size", type=int, default=24, help="Calibration region size"
+    )
+    parser.add_argument("--kernel-size", type=int, default=6, help="Kernel size")
+    parser.add_argument(
+        "--threshold", type=float, default=0.001, help="Singular value threshold"
+    )
+    parser.add_argument(
+        "--mask-threshold", type=float, default=0.8, help="Eigenvalue mask threshold"
+    )
+    parser.add_argument("--device", help="Device to run on (e.g. 'cuda', 'mps', 'cpu')")
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.input):
+        print(f"Error: Input file '{args.input}' not found.")
+        return
+
+    print(f"Loading k-space from {args.input}...")
+    kspace = np.load(args.input)
+
+    # Check shape: (n_coils, *spatial_dims)
+    print(f"Input shape: {kspace.shape}")
+
+    print("Running ESPIRiT calibration...")
+    csm = espirit(
+        kspace,
+        calib_size=args.calib_size,
+        kernel_size=args.kernel_size,
+        threshold=args.threshold,
+        mask_threshold=args.mask_threshold,
+        device=args.device,
+    )
+
+    output_path = args.output
+    if not output_path:
+        base, ext = os.path.splitext(args.input)
+        output_path = f"{base}_csm{ext}"
+
+    print(f"Saving coil sensitivity maps to {output_path}...")
+    np.save(output_path, csm)
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
