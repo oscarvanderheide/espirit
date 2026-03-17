@@ -1,6 +1,12 @@
 """
 ESPIRiT coil sensitivity calibration (PyTorch implementation).
 
+Portions of this code are translated from the BART (Berkeley Advanced
+Reconstruction Toolbox) ESPIRiT implementation:
+Copyright (c) 2013-2026. The Regents of the University of California.
+Copyright (c) 2013-2026. BART Developer Team and Contributors.
+BART is licensed under the BSD 3-Clause License.
+
 Python implementation of ESPIRiT (Uecker et al., MRM 2014).
 Runs on CPU, CUDA, and MPS with a single code path.
 

@@ -4,6 +4,10 @@ PyTorch-based ESPIRiT coil sensitivity calibration for MRI.
 
 Single codebase that runs on **CPU**, **CUDA GPU**, and **Apple Silicon (MPS)** — no separate code paths needed.
 
+## Notice
+
+This package contains a PyTorch translation of the ESPIRiT implementation from the BART (Berkeley Advanced Reconstruction Toolbox), © 2013–2026 The Regents of the University of California and BART Developer Team. BART is licensed under the BSD 3-Clause License. See https://codeberg.org/mrirecon/bart.
+
 ## Installation
 
 ```bash
