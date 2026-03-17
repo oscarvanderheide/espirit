@@ -8,20 +8,19 @@ Single codebase that runs on **CPU**, **CUDA GPU**, and **Apple Silicon (MPS)** 
 
 This package contains a PyTorch translation of the ESPIRiT implementation from the BART (Berkeley Advanced Reconstruction Toolbox), © 2013–2026 The Regents of the University of California and BART Developer Team. BART is licensed under the BSD 3-Clause License. See https://codeberg.org/mrirecon/bart.
 
-## Installation
+## Usage
+
+### 1) CLI
+```bash
+uvx espirit kspace.npy
+```
+
+### 2) Python
 
 ```bash
 uv add espirit
 ```
 
-## Usage
-
-### Command Line
-```bash
-uvx espirit kspace.npy
-```
-
-### Python API
 ```python
 import numpy as np
 import torch
@@ -32,22 +31,21 @@ kspace_np = np.load("kspace.npy")
 csm_np = espirit(kspace_np)
 
 # PyTorch 
-kspace_torch = torch.randn(8, 24, 24, 24, dtype=torch.complex64)
-csm_torch = espirit(kspace_torch)
+kspace_pt = torch.randn(8, 24, 24, 24, dtype=torch.complex64)
+csm_pt = espirit(kspace_pt)
 ```
 
-### Advanced
-All arguments for the `espirit()` function:
+### Options
 ```python
 csm = espirit(
     kspace,             # (n_coils, *spatial_dims)
-    calib_size=24,      # size of calibration region
+    calib_size=24,      # calibration region size
     kernel_size=6,      # sliding-window kernel size
-    threshold=0.01,     # relative singular-value threshold
+    threshold=0.001,     # singular-value threshold
     mask_threshold=0.8, # eigenvalue mask threshold
     normalize=True,     # RSS=1 normalization
-    rotphase=True,      # remove global phase ambiguity
-    device=None         # auto-detect (cuda, mps, cpu)
+    rotphase=True,      # remove phase ambiguity
+    device=None         # cuda, mps, or cpu (auto-detect when None)
 )
 ```
 
