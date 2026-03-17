@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "espirit"
+version = "0.1.0"
+description = "PyTorch-based ESPIRiT coil sensitivity calibration for MRI"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Oscar van der Heide" }
+]
+license = { text = "MIT" }
+keywords = ["espirit", "csm", "coil-sensitivity", "mri", "medical-imaging", "pytorch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "torch>=2.0",
+    "numpy>=2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/oscarvanderheide/espirit"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/espirit"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
