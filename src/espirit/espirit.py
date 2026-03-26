@@ -152,7 +152,7 @@ def espirit(
         csm = _normalize_sensitivity_maps(csm)
 
     # Return first set of maps (dominant eigenvector)
-    result = csm[0]
+    result = csm[0].conj()
 
     if return_numpy:
         return result.cpu().numpy()
@@ -254,7 +254,7 @@ def _compute_kernel_subspace(
         n_keep = 1
     n_keep = max(1, n_keep)
 
-    kernels = eigenvectors[:, :n_keep].T
+    kernels = eigenvectors[:, :n_keep].T.conj()
     return kernels, svals
 
 
