@@ -254,7 +254,7 @@ def _compute_kernel_subspace(
         n_keep = 1
     n_keep = max(1, n_keep)
 
-    kernels = eigenvectors[:, :n_keep].T.conj()
+    kernels = eigenvectors[:, :n_keep].T
     return kernels, svals
 
 
