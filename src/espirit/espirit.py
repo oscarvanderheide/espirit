@@ -102,7 +102,7 @@ def espirit(
     csm : same type as input (ndarray or Tensor), shape (n_coils, *spatial_dims)
         Coil sensitivity maps.
     """
-    # Handle NumPy input — convert, run, convert back
+    # Handle NumPy input — convert to tensor first, but keep on CPU
     return_numpy = isinstance(kspace, np.ndarray)
     if return_numpy:
         kspace = torch.from_numpy(kspace)
@@ -111,48 +111,53 @@ def espirit(
         device = select_device()
     device = torch.device(device) if isinstance(device, str) else device
 
-    kspace = kspace.to(device=device, dtype=torch.complex64)
-
     n_coils = kspace.shape[0]
     n_dims = len(kspace.shape) - 1
+    spatial_shape = kspace.shape[1:]
 
     calib_size = _to_size_tuple(calib_size, n_dims, default=24)
     kernel_size = _to_size_tuple(kernel_size, n_dims, default=6)
 
-    # Step 1
+    # Step 1: Extract calibration region before GPU transfer to save memory
     calib_data = _extract_calibration_region(kspace, calib_size)
 
-    # Step 2
-    cal_matrix = _build_calibration_matrix(calib_data, kernel_size)
+    # Free full k-space — no longer needed
+    del kspace
 
-    # Step 3
-    kernels, _ = _compute_kernel_subspace(cal_matrix, threshold=threshold)
+    # Transfer only the small calibration region to GPU
+    calib_data = calib_data.to(device=device, dtype=torch.complex64)
 
-    # Step 4
-    img_kernels = _transform_kernels_to_image_domain(kernels, kernel_size, n_coils)
+    with torch.inference_mode():
+        # Step 2
+        cal_matrix = _build_calibration_matrix(calib_data, kernel_size)
 
-    # Step 5
-    img_cov = _compute_image_domain_covariance(img_kernels, kernel_size)
+        # Step 3
+        kernels, _ = _compute_kernel_subspace(cal_matrix, threshold=threshold)
 
-    # Step 6
-    csm, eigenvalues = _interpolate_covariance_and_extract_csm(
-        img_cov, kspace.shape[1:], orthiter=orthiter, num_orthiter=num_orthiter
-    )
+        # Step 4
+        img_kernels = _transform_kernels_to_image_domain(kernels, kernel_size, n_coils)
 
-    # Step 7
-    csm = _mask_sensitivity_maps(csm, eigenvalues, mask_threshold, soft_threshold)
+        # Step 5
+        img_cov = _compute_image_domain_covariance(img_kernels, kernel_size)
 
-    # Step 8
-    if rotphase:
-        rotation_matrix = _build_phase_rotation_matrix(calib_data)
-        csm = _apply_phase_rotation(csm, rotation_matrix)
+        # Step 6
+        csm, eigenvalues = _interpolate_covariance_and_extract_csm(
+            img_cov, spatial_shape, orthiter=orthiter, num_orthiter=num_orthiter
+        )
 
-    # Step 9
-    if normalize:
-        csm = _normalize_sensitivity_maps(csm)
+        # Step 7
+        csm = _mask_sensitivity_maps(csm, eigenvalues, mask_threshold, soft_threshold)
 
-    # Return first set of maps (dominant eigenvector)
-    result = csm[0].conj()
+        # Step 8
+        if rotphase:
+            rotation_matrix = _build_phase_rotation_matrix(calib_data)
+            csm = _apply_phase_rotation(csm, rotation_matrix)
+
+        # Step 9
+        if normalize:
+            csm = _normalize_sensitivity_maps(csm)
+
+    result = csm[0].conj().resolve_conj()
 
     if return_numpy:
         return result.cpu().numpy()
@@ -551,7 +556,7 @@ def _mask_sensitivity_maps(
     else:
         weight = (torch.abs(dom_eigval) >= mask_threshold).to(csm.real.dtype)
 
-    csm = csm * weight.unsqueeze(0).unsqueeze(0)
+    csm.mul_(weight.unsqueeze(0).unsqueeze(0))
     return csm
 
 
@@ -582,9 +587,11 @@ def _apply_phase_rotation(
 
 def _normalize_sensitivity_maps(csm: torch.Tensor) -> torch.Tensor:
     """Normalise maps so RSS across coils = 1."""
-    norm = torch.sqrt(torch.sum(torch.abs(csm) ** 2, dim=1, keepdim=True))
+    rss_sq = torch.sum(csm.real.square() + csm.imag.square(), dim=1, keepdim=True)
+    norm = torch.sqrt(rss_sq)
     norm = torch.where(norm > 1e-10, norm, torch.ones_like(norm))
-    return csm / norm
+    csm.div_(norm)
+    return csm
 
 
 def main():
