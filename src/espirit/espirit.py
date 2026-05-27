@@ -133,17 +133,21 @@ def espirit(
 
         # Step 3
         kernels, _ = _compute_kernel_subspace(cal_matrix, threshold=threshold)
+        del cal_matrix
 
         # Step 4
         img_kernels = _transform_kernels_to_image_domain(kernels, kernel_size, n_coils)
+        del kernels
 
         # Step 5
         img_cov = _compute_image_domain_covariance(img_kernels, kernel_size)
+        del img_kernels
 
         # Step 6
         csm, eigenvalues = _interpolate_covariance_and_extract_csm(
             img_cov, spatial_shape, orthiter=orthiter, num_orthiter=num_orthiter
         )
+        del img_cov
 
         # Step 7
         csm = _mask_sensitivity_maps(csm, eigenvalues, mask_threshold, soft_threshold)
@@ -151,6 +155,7 @@ def espirit(
         # Step 8
         if rotphase:
             rotation_matrix = _build_phase_rotation_matrix(calib_data)
+            del calib_data
             csm = _apply_phase_rotation(csm, rotation_matrix)
 
         # Step 9
@@ -329,7 +334,8 @@ def _compute_image_domain_covariance(
     # Batched matrix multiply: H^H @ H
     # .contiguous() required — MPS gives wrong results with non-contiguous views
     H_conj_t = H_t.conj().transpose(-2, -1).contiguous()
-    cov = torch.matmul(H_conj_t, H_t) / normalization
+    cov = torch.matmul(H_conj_t, H_t)
+    cov.div_(normalization)
     return cov
 
 
@@ -390,7 +396,7 @@ def _sinc_interp_axis(data: torch.Tensor, target_size: int, axis: int) -> torch.
     result = torch.fft.ifftshift(padded, dim=axis)
     result = torch.fft.ifft(result, dim=axis)
     result = torch.fft.fftshift(result, dim=axis)
-    result = result * (target_size / source_size)
+    result.mul_(target_size / source_size)
     return result
 
 
@@ -581,7 +587,7 @@ def _apply_phase_rotation(
         # matmul instead of einsum — complex einsum is buggy on MPS
         phase_ref = (ref_vec.unsqueeze(0) @ csm_flat[m]).squeeze(0)
         phase_ref = phase_ref / (torch.abs(phase_ref) + 1e-10)
-        csm_flat[m] = csm_flat[m] * phase_ref.conj().unsqueeze(0)
+        csm_flat[m].mul_(phase_ref.conj().unsqueeze(0))
     return csm
 
 
