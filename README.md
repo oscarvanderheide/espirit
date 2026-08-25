@@ -45,9 +45,17 @@ csm = espirit(
     mask_threshold=0.8, # eigenvalue mask threshold
     normalize=True,     # RSS=1 normalization
     rotphase=True,      # remove phase ambiguity
-    device=None         # cuda, mps, or cpu (auto-detect when None)
+    device=None,        # cuda, mps, or cpu (auto-detect when None)
+    output_device=None, # final CSM device; use "cpu" to reduce 3D GPU memory
+    verbose_memory=False,
 )
 ```
+
+For large 3D datasets, `output_device="cpu"` moves completed sensitivity-map
+slices to CPU immediately. This reduces peak GPU memory while keeping the
+calibration and eigenmap calculations on the selected compute device. Tensor
+inputs return a tensor on `output_device`; NumPy inputs always return a NumPy
+array.
 
 ## Device support
 

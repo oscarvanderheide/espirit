@@ -1,5 +1,6 @@
 """Unit tests for eigenmap extraction (step 6) and power iteration."""
 
+import pytest
 import torch
 
 from espirit.espirit import (
@@ -100,6 +101,16 @@ class TestSincInterpolation:
         upsampled = _sinc_interp_axis(data.unsqueeze(-1), 16, axis=0).squeeze(-1)
         # Should be approximately constant
         assert torch.allclose(upsampled.real, torch.ones(16, device=device), atol=0.2)
+
+    @pytest.mark.parametrize("source_size,target_size", [(5, 9), (6, 10), (9, 5)])
+    def test_fft_matches_interpolation_matrix(self, device, source_size, target_size):
+        data = torch.randn(2, source_size, 3, dtype=torch.complex64, device=device)
+        matrix = _build_sinc_interpolation_matrix(
+            source_size, target_size, device, torch.complex64
+        )
+        expected = torch.einsum("oi,aib->aob", matrix, data)
+        actual = _sinc_interp_axis(data, target_size, axis=1)
+        assert torch.allclose(actual, expected, rtol=1e-5, atol=1e-5)
 
     def test_downsample_shape(self, device):
         data = torch.randn(4, 16, 3, dtype=torch.complex64, device=device)

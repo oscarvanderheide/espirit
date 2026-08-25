@@ -159,3 +159,67 @@ class TestOptions:
         )
         assert csm.shape == (4, 32, 32)
         assert not torch.any(torch.isnan(csm))
+
+
+class TestOutputDevice:
+    """Test output_device and verbose_memory options."""
+
+    def test_cpu_output_works(self, device):
+        kspace = make_synthetic_kspace_3d(4, nz=16, ny=32, nx=32, device=device)
+        csm = espirit(
+            kspace,
+            calib_size=8,
+            kernel_size=4,
+            device=device,
+            output_device="cpu",
+        )
+        assert csm.shape == (4, 16, 32, 32)
+        assert csm.device.type == "cpu"
+
+    def test_cpu_output_consistency(self, device):
+        kspace = make_synthetic_kspace_3d(4, nz=16, ny=32, nx=32, device=device)
+        ref = espirit(kspace, calib_size=8, kernel_size=4, device=device)
+        csm = espirit(
+            kspace,
+            calib_size=8,
+            kernel_size=4,
+            device=device,
+            output_device="cpu",
+        )
+        assert torch.allclose(ref.cpu().abs(), csm.cpu().abs(), atol=1e-4)
+
+    def test_cpu_output_works_for_2d(self, device):
+        kspace = make_synthetic_kspace_2d(4, ny=32, nx=32, device=device)
+        csm = espirit(
+            kspace,
+            calib_size=12,
+            kernel_size=6,
+            device=device,
+            output_device=torch.device("cpu"),
+        )
+        assert csm.shape == (4, 32, 32)
+        assert csm.device.type == "cpu"
+
+    def test_verbose_memory_no_crash(self, device, capsys):
+        kspace = make_synthetic_kspace_2d(4, ny=32, nx=32, device=device)
+        csm = espirit(
+            kspace,
+            calib_size=12,
+            kernel_size=6,
+            device=device,
+            verbose_memory=True,
+        )
+        assert csm.shape == (4, 32, 32)
+        assert "Estimated peak" in capsys.readouterr().out
+
+    def test_verbose_memory_3d_no_crash(self, device):
+        kspace = make_synthetic_kspace_3d(4, nz=16, ny=32, nx=32, device=device)
+        csm = espirit(
+            kspace,
+            calib_size=8,
+            kernel_size=4,
+            device=device,
+            output_device="cpu",
+            verbose_memory=True,
+        )
+        assert csm.shape == (4, 16, 32, 32)

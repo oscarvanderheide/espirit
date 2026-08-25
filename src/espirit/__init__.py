@@ -4,7 +4,7 @@ from .device import available_devices, select_device
 from .espirit import espirit
 from .fft import fft2c, fft3c, ifft2c, ifft3c
 
-__version__ = "0.1.4"
+__version__ = "0.2.0"
 
 __all__ = [
     "espirit",

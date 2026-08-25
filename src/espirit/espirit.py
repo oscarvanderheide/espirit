@@ -33,6 +33,44 @@ from .fft import ifft2c, ifft3c
 
 
 # =============================================================================
+# MEMORY HELPERS
+# =============================================================================
+
+
+def _gpu_memory_info(device: torch.device) -> tuple[float, float] | None:
+    """Return free and total memory in GiB for a CUDA device."""
+    if device.type != "cuda":
+        return None
+    free, total = torch.cuda.mem_get_info(device)
+    return free / 1024**3, total / 1024**3
+
+
+def _estimate_peak_memory(
+    n_coils: int,
+    kernel_size: tuple,
+    spatial_shape: tuple,
+) -> dict:
+    """Estimate peak GPU memory in GiB for the largest pipeline stages."""
+    ncols = n_coils
+    for k in kernel_size:
+        ncols *= k
+    gram = ncols * ncols * 8 / 1024**3
+    csm_elements = 1
+    for s in spatial_shape:
+        csm_elements *= s
+    csm = n_coils * csm_elements * 8 / 1024**3
+    peak = gram * 5 + csm
+    return {"gram": gram, "csm": csm, "peak": peak}
+
+
+def _log_cuda_memory(label: str, device: torch.device) -> None:
+    """Log current and process-peak allocations for a CUDA device."""
+    allocated = torch.cuda.memory_allocated(device) / 1024**3
+    peak = torch.cuda.max_memory_allocated(device) / 1024**3
+    print(f"[ESPIRiT] {label}: {allocated:.2f} GiB allocated, {peak:.2f} GiB peak")
+
+
+# =============================================================================
 # MPS COMPATIBILITY HELPERS
 # =============================================================================
 
@@ -68,6 +106,8 @@ def espirit(
     num_orthiter: int = 30,
     soft_threshold: bool = False,
     device: str | torch.device | None = None,
+    output_device: str | torch.device | None = None,
+    verbose_memory: bool = False,
 ):
     """
     Run the full ESPIRiT calibration pipeline and return coil sensitivity maps.
@@ -96,6 +136,12 @@ def espirit(
         Use a smooth S-curve transition instead of a hard binary mask.
     device : str or torch.device, optional
         Device to run on. Auto-detected when None.
+    output_device : str or torch.device, optional
+        Device on which to return the final CSM. By default it remains on the
+        computation device. Selecting ``"cpu"`` reduces peak GPU memory for
+        large 3D volumes by moving completed slices immediately.
+    verbose_memory : bool
+        Log estimated and peak GPU memory usage during the run.
 
     Returns
     -------
@@ -110,6 +156,10 @@ def espirit(
     if device is None:
         device = select_device()
     device = torch.device(device) if isinstance(device, str) else device
+    if output_device is None:
+        output_device = device
+    else:
+        output_device = torch.device(output_device)
 
     n_coils = kspace.shape[0]
     n_dims = len(kspace.shape) - 1
@@ -118,13 +168,22 @@ def espirit(
     calib_size = _to_size_tuple(calib_size, n_dims, default=24)
     kernel_size = _to_size_tuple(kernel_size, n_dims, default=6)
 
+    if verbose_memory:
+        estimates = _estimate_peak_memory(n_coils, kernel_size, spatial_shape)
+        print(
+            f"[ESPIRiT] Estimated peak: gram={estimates['gram']:.1f} GiB, "
+            f"csm={estimates['csm']:.1f} GiB, total={estimates['peak']:.1f} GiB"
+        )
+        memory_info = _gpu_memory_info(device)
+        if memory_info is not None:
+            free_gib, total_gib = memory_info
+            print(f"[ESPIRiT] GPU: {total_gib:.1f} GiB total, {free_gib:.1f} GiB free")
+        else:
+            print(f"[ESPIRiT] Compute device: {device}")
+
     # Step 1: Extract calibration region before GPU transfer to save memory
     calib_data = _extract_calibration_region(kspace, calib_size)
-
-    # Free full k-space — no longer needed
     del kspace
-
-    # Transfer only the small calibration region to GPU
     calib_data = calib_data.to(device=device, dtype=torch.complex64)
 
     with torch.inference_mode():
@@ -134,6 +193,8 @@ def espirit(
         # Step 3
         kernels, _ = _compute_kernel_subspace(cal_matrix, threshold=threshold)
         del cal_matrix
+        if verbose_memory and device.type == "cuda":
+            _log_cuda_memory("After Gram/SVD", device)
 
         # Step 4
         img_kernels = _transform_kernels_to_image_domain(kernels, kernel_size, n_coils)
@@ -142,12 +203,20 @@ def espirit(
         # Step 5
         img_cov = _compute_image_domain_covariance(img_kernels, kernel_size)
         del img_kernels
+        if verbose_memory and device.type == "cuda":
+            _log_cuda_memory("After image-domain covariance", device)
 
         # Step 6
         csm, eigenvalues = _interpolate_covariance_and_extract_csm(
-            img_cov, spatial_shape, orthiter=orthiter, num_orthiter=num_orthiter
+            img_cov,
+            spatial_shape,
+            orthiter=orthiter,
+            num_orthiter=num_orthiter,
+            output_device=output_device,
         )
         del img_cov
+        if verbose_memory and device.type == "cuda":
+            _log_cuda_memory("After covariance interpolation + eigenmaps", device)
 
         # Step 7
         csm = _mask_sensitivity_maps(csm, eigenvalues, mask_threshold, soft_threshold)
@@ -156,11 +225,16 @@ def espirit(
         if rotphase:
             rotation_matrix = _build_phase_rotation_matrix(calib_data)
             del calib_data
+            if csm.device != rotation_matrix.device:
+                rotation_matrix = rotation_matrix.to(csm.device)
             csm = _apply_phase_rotation(csm, rotation_matrix)
 
         # Step 9
         if normalize:
             csm = _normalize_sensitivity_maps(csm)
+
+        if verbose_memory and device.type == "cuda":
+            _log_cuda_memory("After final CSM creation", device)
 
     result = csm[0].conj().resolve_conj()
 
@@ -468,11 +542,14 @@ def _interpolate_covariance_and_extract_csm(
     target_shape: tuple,
     orthiter: bool = True,
     num_orthiter: int = 30,
+    output_device: torch.device | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Sinc-interpolate covariance to full resolution and extract eigenmaps.
 
     Uses slice-by-slice processing for 3D to manage memory.
+    If output_device is provided, the final CSM is returned on that device.
+    For 3D inputs, completed slices are moved immediately.
     """
     n_dims = img_cov.ndim - 2
     nc = img_cov.shape[-1]
@@ -483,13 +560,18 @@ def _interpolate_covariance_and_extract_csm(
         ny, nx = target_shape
         cov_full = _sinc_interp_axis(img_cov, ny, axis=0)
         cov_full = _sinc_interp_axis(cov_full, nx, axis=1)
-        return _compute_eigenmaps_batched(cov_full, orthiter, num_orthiter)
+        csm, eigenvalues = _compute_eigenmaps_batched(cov_full, orthiter, num_orthiter)
+        if output_device is not None and output_device != device:
+            csm = csm.to(output_device)
+            eigenvalues = eigenvalues.to(output_device)
+        return csm, eigenvalues
 
     elif n_dims == 3:
         nz, ny, nx = target_shape
         nz_s, ny_s, nx_s = img_cov.shape[:3]
 
-        # Pack upper triangle to halve memory
+        csm_device = output_device if output_device is not None else device
+
         cosize = nc * (nc + 1) // 2
         cov_packed = torch.zeros((nz_s, ny_s, nx_s, cosize), dtype=dtype, device=device)
         tri_i = torch.zeros(cosize, dtype=torch.long, device=device)
@@ -502,33 +584,27 @@ def _interpolate_covariance_and_extract_csm(
                 tri_j[idx] = j
                 idx += 1
 
-        # Precompute sinc interpolation matrices
-        M_z = _build_sinc_interpolation_matrix(nz_s, nz, device, dtype)
-        M_y = _build_sinc_interpolation_matrix(ny_s, ny, device, dtype)
-        M_x = _build_sinc_interpolation_matrix(nx_s, nx, device, dtype)
+        cov_z = _sinc_interp_axis(cov_packed, nz, axis=0)
+        del cov_packed
 
-        # Interpolate z for whole volume
-        cov_z = (M_z @ cov_packed.reshape(nz_s, -1)).reshape(nz, ny_s, nx_s, cosize)
-
-        csm = torch.zeros((1, nc, nz, ny, nx), dtype=dtype, device=device)
-        eigenvalues = torch.zeros((1, nz, ny, nx), device=device)
+        csm = torch.zeros((1, nc, nz, ny, nx), dtype=dtype, device=csm_device)
+        eigenvalues = torch.zeros((1, nz, ny, nx), device=csm_device)
 
         for z in range(nz):
-            slc = (M_y @ cov_z[z].reshape(ny_s, -1)).reshape(ny, nx_s, cosize)
-            slc = (
-                (M_x @ slc.permute(1, 0, 2).reshape(nx_s, -1))
-                .reshape(nx, ny, cosize)
-                .permute(1, 0, 2)
-            )
+            slc = _sinc_interp_axis(cov_z[z], ny, axis=0)
+            slc = _sinc_interp_axis(slc, nx, axis=1)
 
-            # Reconstruct full Hermitian matrix from upper triangle
             cov_full = torch.zeros((ny, nx, nc, nc), dtype=dtype, device=device)
             cov_full[..., tri_i, tri_j] = slc
             cov_full[..., tri_j, tri_i] = slc.conj()
 
             s, e = _compute_eigenmaps_batched(cov_full, orthiter, num_orthiter)
-            csm[:, :, z] = s
-            eigenvalues[:, z] = e
+            if csm_device != device:
+                csm[:, :, z] = s.to(csm_device)
+                eigenvalues[:, z] = e.to(csm_device)
+            else:
+                csm[:, :, z] = s
+                eigenvalues[:, z] = e
 
         return csm, eigenvalues
     else:
