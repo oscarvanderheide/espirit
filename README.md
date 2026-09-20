@@ -45,12 +45,17 @@ csm = espirit(
     mask_threshold=0.8, # eigenvalue mask threshold
     normalize=True,     # RSS=1 normalization
     rotphase=True,      # remove phase ambiguity
-    orthiter=False,     # use exact eigendecomposition (True uses power iteration)
+    orthiter=True,      # fast power iteration (False uses exact eigendecomposition)
     device=None,        # cuda, mps, or cpu (auto-detect when None)
     output_device=None, # final CSM device; use "cpu" to reduce 3D GPU memory
     verbose_memory=False,
 )
 ```
+
+Power iteration is the default because it is much faster and produced the same
+maps as exact eigendecomposition on the tested 13-coil 3D angio prescan. Exact
+eigenmaps remain available with `orthiter=False` for data where the dominant
+eigenvector does not converge sufficiently within the configured iterations.
 
 On CUDA, exact eigenmaps with 9 or more coils use double precision only for the
 batched per-voxel eigendecomposition. This conservative threshold covers both

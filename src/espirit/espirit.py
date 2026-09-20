@@ -149,7 +149,7 @@ def espirit(
     mask_threshold: float = 0.8,
     normalize: bool = True,
     rotphase: bool = True,
-    orthiter: bool = False,
+    orthiter: bool = True,
     num_orthiter: int = 30,
     soft_threshold: bool = False,
     device: str | torch.device | None = None,
@@ -176,8 +176,8 @@ def espirit(
     rotphase : bool
         Remove the global phase ambiguity.
     orthiter : bool
-        Use power iteration instead of full eigendecomposition. By default,
-        ``torch.linalg.eigh`` is used for exact eigenmaps.
+        Use power iteration instead of full eigendecomposition. Enabled by
+        default; pass ``False`` to request exact eigenmaps.
     num_orthiter : int
         Number of power-iteration steps.
     soft_threshold : bool
@@ -550,7 +550,7 @@ def _run_power_iteration(
 
 
 def _compute_eigenmaps_batched(
-    img_cov: torch.Tensor, orthiter: bool = False, num_orthiter: int = 30
+    img_cov: torch.Tensor, orthiter: bool = True, num_orthiter: int = 30
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Extract the dominant eigenvector from a batch of per-voxel covariance matrices.
@@ -588,7 +588,7 @@ def _compute_eigenmaps_batched(
 def _interpolate_covariance_and_extract_csm(
     img_cov: torch.Tensor,
     target_shape: tuple,
-    orthiter: bool = False,
+    orthiter: bool = True,
     num_orthiter: int = 30,
     output_device: torch.device | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:

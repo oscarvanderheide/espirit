@@ -21,8 +21,8 @@ from conftest import make_synthetic_kspace_2d, make_synthetic_kspace_3d
 class TestFullPipeline2D:
     """Full ESPIRiT pipeline tests on 2D synthetic data."""
 
-    def test_eigh_is_default(self):
-        assert inspect.signature(espirit).parameters["orthiter"].default is False
+    def test_power_iteration_is_default(self):
+        assert inspect.signature(espirit).parameters["orthiter"].default is True
 
     def test_runs_and_returns_correct_shape(self, device):
         n_coils, ny, nx = 4, 64, 64
