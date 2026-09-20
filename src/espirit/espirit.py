@@ -80,23 +80,54 @@ def _log_cuda_memory(label: str, device: torch.device) -> None:
 # torch 2.10 / CUDA 12.8 a batch of 24576 13x13 matrices works and 32768 fails. A 224x224
 # slice is 50176 matrices, so the exact eigenmap path died on every 3D volume of that size.
 _EIGH_MAX_CUDA_BATCH = 16384
+_EIGH_COMPLEX64_BUG_MIN_SIZE = 17
+_EIGH_MAX_CUDA_COMPLEX128_ELEMENTS = 512 * 20 * 20
 
 
 def _eigh(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """torch.linalg.eigh, chunked on CUDA for large batches, with CPU fallback for MPS."""
+    """Run ``eigh`` with CUDA correctness and batch-size workarounds."""
+    input_dtype = A.dtype
+    use_cuda_precision_workaround = (
+        A.is_cuda
+        and A.ndim > 2
+        and A.dtype == torch.complex64
+        and A.shape[-1] >= _EIGH_COMPLEX64_BUG_MIN_SIZE
+    )
+
+    # PyTorch's CUDA batched solver corrupts complex64 eigenvectors on repeated
+    # calls for matrices of order 17 and larger (pytorch/pytorch#192483). The
+    # complex128 path is correct; cast only this final per-voxel decomposition
+    # and return the public result in the original precision.
+    if use_cuda_precision_workaround:
+        A = A.to(torch.complex128)
+
     try:
-        if A.is_cuda and A.ndim > 2 and A[..., 0, 0].numel() > _EIGH_MAX_CUDA_BATCH:
+        max_cuda_batch = _EIGH_MAX_CUDA_BATCH
+        if use_cuda_precision_workaround:
+            matrix_elements = A.shape[-2] * A.shape[-1]
+            max_cuda_batch = min(
+                max_cuda_batch,
+                max(1, _EIGH_MAX_CUDA_COMPLEX128_ELEMENTS // matrix_elements),
+            )
+
+        if A.is_cuda and A.ndim > 2 and A[..., 0, 0].numel() > max_cuda_batch:
             flat = A.reshape(-1, *A.shape[-2:])
             w = torch.empty(flat.shape[:2], dtype=A.real.dtype, device=A.device)
             v = torch.empty_like(flat)
-            for start in range(0, flat.shape[0], _EIGH_MAX_CUDA_BATCH):
-                stop = start + _EIGH_MAX_CUDA_BATCH
+            for start in range(0, flat.shape[0], max_cuda_batch):
+                stop = start + max_cuda_batch
                 w[start:stop], v[start:stop] = torch.linalg.eigh(flat[start:stop])
-            return w.reshape(A.shape[:-1]), v.reshape(A.shape)
-        return torch.linalg.eigh(A)
+            w, v = w.reshape(A.shape[:-1]), v.reshape(A.shape)
+        else:
+            w, v = torch.linalg.eigh(A)
     except NotImplementedError:
         w, v = torch.linalg.eigh(A.cpu())
-        return w.to(A.device), v.to(A.device)
+        w, v = w.to(A.device), v.to(A.device)
+
+    if use_cuda_precision_workaround:
+        w = w.to(torch.float32)
+        v = v.to(input_dtype)
+    return w, v
 
 
 def _complex_norm(x: torch.Tensor, dim: int, keepdim: bool = False) -> torch.Tensor:
@@ -117,7 +148,7 @@ def espirit(
     mask_threshold: float = 0.8,
     normalize: bool = True,
     rotphase: bool = True,
-    orthiter: bool = True,
+    orthiter: bool = False,
     num_orthiter: int = 30,
     soft_threshold: bool = False,
     device: str | torch.device | None = None,
@@ -144,7 +175,8 @@ def espirit(
     rotphase : bool
         Remove the global phase ambiguity.
     orthiter : bool
-        Use power iteration instead of full eigendecomposition.
+        Use power iteration instead of full eigendecomposition. By default,
+        ``torch.linalg.eigh`` is used for exact eigenmaps.
     num_orthiter : int
         Number of power-iteration steps.
     soft_threshold : bool
@@ -517,7 +549,7 @@ def _run_power_iteration(
 
 
 def _compute_eigenmaps_batched(
-    img_cov: torch.Tensor, orthiter: bool = True, num_orthiter: int = 30
+    img_cov: torch.Tensor, orthiter: bool = False, num_orthiter: int = 30
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Extract the dominant eigenvector from a batch of per-voxel covariance matrices.
@@ -555,7 +587,7 @@ def _compute_eigenmaps_batched(
 def _interpolate_covariance_and_extract_csm(
     img_cov: torch.Tensor,
     target_shape: tuple,
-    orthiter: bool = True,
+    orthiter: bool = False,
     num_orthiter: int = 30,
     output_device: torch.device | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:

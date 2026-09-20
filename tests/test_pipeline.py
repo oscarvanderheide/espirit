@@ -8,6 +8,8 @@ Tests that:
 4. NumPy input/output works correctly
 """
 
+import inspect
+
 import torch
 import numpy as np
 import pytest
@@ -18,6 +20,9 @@ from conftest import make_synthetic_kspace_2d, make_synthetic_kspace_3d
 
 class TestFullPipeline2D:
     """Full ESPIRiT pipeline tests on 2D synthetic data."""
+
+    def test_eigh_is_default(self):
+        assert inspect.signature(espirit).parameters["orthiter"].default is False
 
     def test_runs_and_returns_correct_shape(self, device):
         n_coils, ny, nx = 4, 64, 64

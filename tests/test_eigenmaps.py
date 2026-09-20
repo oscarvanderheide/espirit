@@ -93,6 +93,23 @@ class TestComputeEigenmapsBatched:
 
 class TestChunkedEigh:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only code path")
+    def test_repeated_complex64_calls_are_valid_at_17_coils(self):
+        """Work around corrupt CUDA eigenvectors on the second 17x17 batch."""
+        nc = 17
+        H = torch.randn(128, nc, nc, dtype=torch.complex64, device="cuda")
+        cov = torch.matmul(H.conj().transpose(-2, -1), H)
+        identity = torch.eye(nc, dtype=torch.complex64, device="cuda")
+
+        for _ in range(3):
+            w, v = _eigh(cov)
+            assert w.dtype == torch.float32
+            assert v.dtype == torch.complex64
+            assert (v.mH @ v - identity).abs().amax() < 1e-4
+            top = v[..., -1:]
+            residual = (cov @ top - w[..., -1:, None] * top).abs().amax()
+            assert residual / w.abs().max() < 1e-4
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only code path")
     def test_chunked_matches_unchunked(self, monkeypatch):
         """Chunking a large CUDA batch must reproduce the plain eigh result."""
         nc = 5

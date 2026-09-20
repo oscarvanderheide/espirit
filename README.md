@@ -45,11 +45,18 @@ csm = espirit(
     mask_threshold=0.8, # eigenvalue mask threshold
     normalize=True,     # RSS=1 normalization
     rotphase=True,      # remove phase ambiguity
+    orthiter=False,     # use exact eigendecomposition (True uses power iteration)
     device=None,        # cuda, mps, or cpu (auto-detect when None)
     output_device=None, # final CSM device; use "cpu" to reduce 3D GPU memory
     verbose_memory=False,
 )
 ```
+
+On CUDA, exact eigenmaps with 17 or more coils use double precision only for
+the batched per-voxel eigendecomposition. This works around
+[PyTorch issue #192483](https://github.com/pytorch/pytorch/issues/192483), which
+can silently return invalid `complex64` eigenvectors on repeated calls. The
+result is converted back to the input precision afterward.
 
 For large 3D datasets, `output_device="cpu"` moves completed sensitivity-map
 slices to CPU immediately. This reduces peak GPU memory while keeping the
