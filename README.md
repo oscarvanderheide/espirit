@@ -52,8 +52,10 @@ csm = espirit(
 )
 ```
 
-On CUDA, exact eigenmaps with 17 or more coils use double precision only for
-the batched per-voxel eigendecomposition. This works around
+On CUDA, exact eigenmaps with 9 or more coils use double precision only for the
+batched per-voxel eigendecomposition. This conservative threshold covers both
+the reported 17-coil failure and failures at lower coil counts in larger
+batches. It works around
 [PyTorch issue #192483](https://github.com/pytorch/pytorch/issues/192483), which
 can silently return invalid `complex64` eigenvectors on repeated calls. The
 result is converted back to the input precision afterward.

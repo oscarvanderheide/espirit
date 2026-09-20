@@ -80,7 +80,7 @@ def _log_cuda_memory(label: str, device: torch.device) -> None:
 # torch 2.10 / CUDA 12.8 a batch of 24576 13x13 matrices works and 32768 fails. A 224x224
 # slice is 50176 matrices, so the exact eigenmap path died on every 3D volume of that size.
 _EIGH_MAX_CUDA_BATCH = 16384
-_EIGH_COMPLEX64_BUG_MIN_SIZE = 17
+_EIGH_COMPLEX64_BUG_MIN_SIZE = 9
 _EIGH_MAX_CUDA_COMPLEX128_ELEMENTS = 512 * 20 * 20
 
 
@@ -95,9 +95,10 @@ def _eigh(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     )
 
     # PyTorch's CUDA batched solver corrupts complex64 eigenvectors on repeated
-    # calls for matrices of order 17 and larger (pytorch/pytorch#192483). The
-    # complex128 path is correct; cast only this final per-voxel decomposition
-    # and return the public result in the original precision.
+    # calls (pytorch/pytorch#192483). The reported boundary is order 17 at a
+    # batch of 512, but larger batches fail down to order 9. The complex128 path
+    # is correct; cast only this final per-voxel decomposition and return the
+    # public result in the original precision.
     if use_cuda_precision_workaround:
         A = A.to(torch.complex128)
 

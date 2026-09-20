@@ -93,10 +93,10 @@ class TestComputeEigenmapsBatched:
 
 class TestChunkedEigh:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only code path")
-    def test_repeated_complex64_calls_are_valid_at_17_coils(self):
-        """Work around corrupt CUDA eigenvectors on the second 17x17 batch."""
-        nc = 17
-        H = torch.randn(128, nc, nc, dtype=torch.complex64, device="cuda")
+    @pytest.mark.parametrize("batch,nc", [(128, 17), (4096, 9)])
+    def test_repeated_complex64_calls_are_valid(self, batch, nc):
+        """Work around corruption at both reported and large-batch boundaries."""
+        H = torch.randn(batch, nc, nc, dtype=torch.complex64, device="cuda")
         cov = torch.matmul(H.conj().transpose(-2, -1), H)
         identity = torch.eye(nc, dtype=torch.complex64, device="cuda")
 
