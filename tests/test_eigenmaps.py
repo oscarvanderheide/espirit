@@ -3,7 +3,10 @@
 import pytest
 import torch
 
+import sys
+
 from espirit.espirit import (
+    _eigh,
     _run_power_iteration,
     _compute_eigenmaps_batched,
     _build_sinc_interpolation_matrix,
@@ -86,6 +89,35 @@ class TestComputeEigenmapsBatched:
         # Eigenvectors should be parallel (up to phase)
         overlap = torch.abs(torch.sum(csm_orth.conj() * csm_eigh, dim=1))
         assert (overlap.cpu() > 0.95).all(), f"Min overlap: {overlap.min():.4f}"
+
+
+class TestChunkedEigh:
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only code path")
+    def test_chunked_matches_unchunked(self, monkeypatch):
+        """Chunking a large CUDA batch must reproduce the plain eigh result."""
+        nc = 5
+        H = torch.randn(6, 7, 9, nc, dtype=torch.complex64, device="cuda")
+        cov = torch.matmul(H.conj().transpose(-2, -1), H)  # (6, 7, nc, nc) batch of 42
+        w_ref, v_ref = torch.linalg.eigh(cov)
+        # `espirit.espirit` is shadowed by the re-exported function; go via sys.modules.
+        monkeypatch.setattr(sys.modules["espirit.espirit"], "_EIGH_MAX_CUDA_BATCH", 10)
+        w, v = _eigh(cov)
+        assert w.shape == w_ref.shape and v.shape == v_ref.shape
+        assert torch.allclose(w, w_ref, rtol=1e-4, atol=1e-5)
+        # Eigenvectors agree up to a per-vector phase.
+        overlap = torch.abs(torch.sum(v.conj() * v_ref, dim=-2))
+        assert (overlap > 0.999).all()
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only code path")
+    def test_full_slice_batch(self):
+        """A 224x224 slice of 13x13 matrices exceeds the cuSOLVER batch limit."""
+        nc = 13
+        H = torch.randn(224, 224, 20, nc, dtype=torch.complex64, device="cuda")
+        cov = torch.matmul(H.conj().transpose(-2, -1), H)
+        w, v = _eigh(cov)
+        top = v[..., -1:]
+        residual = (cov @ top - w[..., -1:, None] * top).abs().amax()
+        assert residual / w.abs().max() < 1e-4
 
 
 class TestSincInterpolation:

@@ -75,9 +75,24 @@ def _log_cuda_memory(label: str, device: torch.device) -> None:
 # =============================================================================
 
 
+# cuSOLVER's batched Hermitian eigensolver (torch >= 2.x routes small batched eigh to
+# cusolverDnXsyevBatched) rejects large batches with CUSOLVER_STATUS_INVALID_VALUE: on
+# torch 2.10 / CUDA 12.8 a batch of 24576 13x13 matrices works and 32768 fails. A 224x224
+# slice is 50176 matrices, so the exact eigenmap path died on every 3D volume of that size.
+_EIGH_MAX_CUDA_BATCH = 16384
+
+
 def _eigh(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """torch.linalg.eigh with automatic CPU fallback for MPS."""
+    """torch.linalg.eigh, chunked on CUDA for large batches, with CPU fallback for MPS."""
     try:
+        if A.is_cuda and A.ndim > 2 and A[..., 0, 0].numel() > _EIGH_MAX_CUDA_BATCH:
+            flat = A.reshape(-1, *A.shape[-2:])
+            w = torch.empty(flat.shape[:2], dtype=A.real.dtype, device=A.device)
+            v = torch.empty_like(flat)
+            for start in range(0, flat.shape[0], _EIGH_MAX_CUDA_BATCH):
+                stop = start + _EIGH_MAX_CUDA_BATCH
+                w[start:stop], v[start:stop] = torch.linalg.eigh(flat[start:stop])
+            return w.reshape(A.shape[:-1]), v.reshape(A.shape)
         return torch.linalg.eigh(A)
     except NotImplementedError:
         w, v = torch.linalg.eigh(A.cpu())
